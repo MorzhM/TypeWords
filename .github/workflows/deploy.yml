@@ -37,8 +37,41 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
           SSH_KEY:  ${{ secrets.SSH_KEY  || vars.SSH_KEY  }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+          TYPEWORDS: ${{ secrets.TYPEWORDS }}
         run: |
           set -e
+          # If bundled secret TYPEWORDS is provided, parse KEY=VALUE lines to fill missing vars
+          if [ -n "${TYPEWORDS}" ]; then
+            echo "TYPEWORDS secret detected - attempting to parse"
+            echo "${TYPEWORDS}" > preflight.env
+            # Normalize CRLF to LF and ignore comment/empty lines
+            sed -i 's/\r$//' preflight.env
+            while IFS='=' read -r k v; do
+              [ -z "$k" ] && continue
+              case "$k" in \#*) continue;; esac
+              case "$k" in
+                SSH_HOST|SSH_PORT|SSH_USER|SSH_KEY|DEPLOY_PATH)
+                  # Only set if current env empty
+                  eval "cur=\"\${$k}\""
+                  if [ -z "$cur" ]; then
+                    # Preserve multi-line SSH_KEY
+                    if [ "$k" = "SSH_KEY" ]; then
+                      # Capture the rest of the file for SSH_KEY (supports multi-line)
+                      # Reconstruct from the current line (v) and any following lines until END marker
+                      awk 'f{print} /BEGIN OPENSSH PRIVATE KEY/{f=1} END{}' preflight.env > sshkey.tmp || true
+                      if grep -q "BEGIN OPENSSH PRIVATE KEY" sshkey.tmp && grep -q "END OPENSSH PRIVATE KEY" sshkey.tmp; then
+                        export SSH_KEY="$(cat sshkey.tmp)"
+                      else
+                        export SSH_KEY="$v"
+                      fi
+                    else
+                      eval "export $k=\"$v\""
+                    fi
+                  fi
+                ;;
+              esac
+            done < preflight.env
+          fi
           for v in SSH_HOST SSH_PORT SSH_USER SSH_KEY DEPLOY_PATH; do
             if [ -z "${!v}" ]; then
               echo "::error title=Missing config::Environment variable $v is empty. Please set it in Repository Secrets or Variables.";
