@@ -1,0 +1,51 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [ "deploy" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build-nocdn
+
+      - name: Upload build to server and release switch (DNMP)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY:  ${{ secrets.SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -e
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          RELEASE_DIR="$DEPLOY_PATH/releases/$TIMESTAMP"
+          echo "$SSH_KEY" > key && chmod 600 key
+          rsync -az --delete -e "ssh -i key -p $SSH_PORT -o StrictHostKeyChecking=no" ./dist/ $SSH_USER@$SSH_HOST:$RELEASE_DIR/
+          ssh -i key -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "\
+            mkdir -p $DEPLOY_PATH/releases $DEPLOY_PATH && \
+            ln -sfn $RELEASE_DIR $DEPLOY_PATH/current && \
+            (docker exec nginx nginx -s reload || true) && \
+            ls -1dt $DEPLOY_PATH/releases/* | tail -n +4 | xargs -r rm -rf"
+
+

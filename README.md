@@ -89,6 +89,52 @@
 5. 在浏览器中打开[`http://localhost:3000`](http://localhost:3000)  来访问项目。
 6. 执行`npm run build-nocdn`打包项目文件
 
+## 代码管理与同步（Fork 场景）
+
+> 本仓库是从原作者项目 fork 而来，默认分支为 `master`。
+
+### 远端设置
+
+- 添加上游（原作者仓库）并拉取：
+  ```bash
+  git remote add upstream https://github.com/zyronon/TypeWords.git
+  git fetch upstream
+  ```
+- 查看远端：
+  ```bash
+  git remote -v
+  ```
+
+### 与上游保持同步
+
+- 将本地 `master` 与 `upstream/master` 同步并推送到自己的 fork：
+  ```bash
+  git checkout master
+  git fetch upstream
+  git rebase upstream/master
+  # 或使用合并：git merge upstream/master
+  git push origin master
+  ```
+
+### 分支策略
+
+- 日常开发：从 `master` 切出 `feature/*` 分支开发，完成后通过 PR 合并回 `master`。
+- 部署分支：`deploy` 用于触发部署流程（CI/CD），当 `master` 稳定时再合并到 `deploy`。
+
+### 自动同步工作流
+
+- 仓库已提供自动同步上游的 GitHub Actions（每日 03:00 UTC）：
+  - 文件：`.github/workflows/sync-upstream.yml`
+  - 作用：自动将 `upstream/master` 合并到 `master`，有变更则推送
+  - 可在 Actions 页面手动触发以立即执行
+
+### 建议的分支保护（在 GitHub 仓库设置中配置）
+
+- 保护 `master`、`deploy`：
+  - 禁止强制推送
+  - 要求通过 Pull Request 合并
+  - 可选：要求状态检查通过后才允许合并
+
 ## 功能与建议
 
 目前项目处于开发初期，新功能正在持续添加中，如果你对软件有任何功能与建议，欢迎在 `Issues` 中提出

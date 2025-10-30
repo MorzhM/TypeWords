@@ -1,0 +1,42 @@
+name: Sync fork from upstream
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 每天 03:00 UTC 执行（可调整）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/zyronon/TypeWords.git || true
+          git fetch upstream
+
+      - name: Merge upstream/master -> master
+        run: |
+          git checkout master
+          # 先尝试快进合并，失败则普通合并，不阻塞
+          git merge --ff-only upstream/master || git merge --no-edit upstream/master || true
+          # 若无变化则不推送
+          if [ -n "$(git status --porcelain)" ]; then
+            git push origin master
+          else
+            echo "No changes to push"
+          fi
+
+      - name: Optional - open PR to deploy when main updates
+        if: ${{ false }} # 如需 main 更新后自动向 deploy 发 PR，可改为 true 并完善逻辑
+        run: |
+          echo "placeholder"
+
+
