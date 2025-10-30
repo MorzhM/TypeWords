@@ -29,13 +29,36 @@ jobs:
       - name: Build
         run: npm run build-nocdn
 
+      - name: Preflight - resolve config and validate
+        id: preflight
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT || vars.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          SSH_KEY:  ${{ secrets.SSH_KEY  || vars.SSH_KEY  }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+        run: |
+          set -e
+          for v in SSH_HOST SSH_PORT SSH_USER SSH_KEY DEPLOY_PATH; do
+            if [ -z "${!v}" ]; then
+              echo "::error title=Missing config::Environment variable $v is empty. Please set it in Repository Secrets or Variables.";
+              exit 1;
+            fi
+          done
+          # Mask the key and output a compact summary
+          echo "::add-mask::${SSH_KEY}"
+          echo "host=${SSH_HOST}" >> $GITHUB_OUTPUT
+          echo "port=${SSH_PORT}" >> $GITHUB_OUTPUT
+          echo "user=${SSH_USER}" >> $GITHUB_OUTPUT
+          echo "path=${DEPLOY_PATH}" >> $GITHUB_OUTPUT
+
       - name: Upload build to server and release switch (DNMP)
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY:  ${{ secrets.SSH_KEY }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SSH_HOST: ${{ steps.preflight.outputs.host }}
+          SSH_PORT: ${{ steps.preflight.outputs.port }}
+          SSH_USER: ${{ steps.preflight.outputs.user }}
+          SSH_KEY:  ${{ secrets.SSH_KEY || vars.SSH_KEY }}
+          DEPLOY_PATH: ${{ steps.preflight.outputs.path }}
         run: |
           set -e
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
