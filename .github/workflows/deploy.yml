@@ -83,11 +83,13 @@ jobs:
             exit 1
           fi
           
-          # 创建软链接并重载 Nginx
+          # 创建软链接并重载 Nginx（使用相对路径，避免容器内挂载问题）
           echo "Creating symlink and reloading Nginx..."
+          RELATIVE_RELEASE=$(basename $RELEASE_DIR)
           ssh -i key -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "\
             rm -rf $DEPLOY_PATH/current && \
-            ln -sfn $RELEASE_DIR $DEPLOY_PATH/current && \
+            cd $DEPLOY_PATH && \
+            ln -sfn releases/$RELATIVE_RELEASE current && \
             docker exec nginx nginx -t && \
             docker exec nginx nginx -s reload && \
             ls -1dt $DEPLOY_PATH/releases/* | tail -n +4 | xargs -r rm -rf"
