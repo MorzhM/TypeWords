@@ -67,11 +67,31 @@ jobs:
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           RELEASE_DIR="$DEPLOY_PATH/releases/$TIMESTAMP"
           echo "$SSH_KEY" > key && chmod 600 key
-          rsync -az --delete -e "ssh -i key -p $SSH_PORT -o StrictHostKeyChecking=no" ./dist/ $SSH_USER@$SSH_HOST:$RELEASE_DIR/
+          
+          # 确保远程目录存在
           ssh -i key -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "\
-            mkdir -p $DEPLOY_PATH/releases $DEPLOY_PATH && \
+            mkdir -p $DEPLOY_PATH/releases $DEPLOY_PATH"
+          
+          # 上传构建产物
+          echo "Uploading files to $RELEASE_DIR..."
+          rsync -az --delete -e "ssh -i key -p $SSH_PORT -o StrictHostKeyChecking=no" ./dist/ $SSH_USER@$SSH_HOST:$RELEASE_DIR/
+          
+          # 验证上传是否成功（检查 index.html 是否存在）
+          echo "Verifying deployment..."
+          if ssh -i key -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "[ ! -f $RELEASE_DIR/index.html ]"; then
+            echo "::error::Deployment failed: index.html not found in $RELEASE_DIR"
+            exit 1
+          fi
+          
+          # 创建软链接并重载 Nginx
+          echo "Creating symlink and reloading Nginx..."
+          ssh -i key -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "\
+            rm -rf $DEPLOY_PATH/current && \
             ln -sfn $RELEASE_DIR $DEPLOY_PATH/current && \
-            (docker exec nginx nginx -s reload || true) && \
+            docker exec nginx nginx -t && \
+            docker exec nginx nginx -s reload && \
             ls -1dt $DEPLOY_PATH/releases/* | tail -n +4 | xargs -r rm -rf"
+          
+          echo "✓ Deployment successful: $RELEASE_DIR -> $DEPLOY_PATH/current"
 
 
