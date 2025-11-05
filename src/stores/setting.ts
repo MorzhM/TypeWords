@@ -53,6 +53,7 @@ export interface SettingState {
   disableShowPracticeSettingDialog: boolean // 不默认显示练习设置弹框
   autoNextWord: boolean //自动切换下一个单词
   inputWrongClear: boolean //单词输入错误，清空已输入内容
+  showVirtualKeyboard: boolean //显示虚拟键盘
 }
 
 export const getDefaultSettingState = (): SettingState => ({
@@ -103,6 +104,7 @@ export const getDefaultSettingState = (): SettingState => ({
   disableShowPracticeSettingDialog: false,
   autoNextWord: true,
   inputWrongClear: false,
+  showVirtualKeyboard: true, // 默认显示虚拟键盘
 })
 
 export const useSettingStore = defineStore('setting', {

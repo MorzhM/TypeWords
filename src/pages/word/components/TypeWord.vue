@@ -13,6 +13,7 @@ import BaseButton from "@/components/BaseButton.vue";
 import Space from "@/pages/article/components/Space.vue";
 import Toast from "@/components/base/toast/Toast.ts";
 import Tooltip from "@/components/base/Tooltip.vue";
+import VirtualKeyboard from "@/components/VirtualKeyboard.vue";
 
 interface IProps {
   word: Word,
@@ -54,6 +55,65 @@ let displayWord = $computed(() => {
   return props.word.word.slice(input.length + wrong.length)
 })
 
+// 获取下一个需要按下的键（用于虚拟键盘高亮）
+const nextKey = $computed(() => {
+  // 如果显示结果，不显示引导
+  if (showWordResult) {
+    return null
+  }
+  
+  // $computed 宏语法中，直接使用 displayWord，不需要 .value
+  const remaining = displayWord
+  if (!remaining || remaining.length === 0) {
+    return null
+  }
+  const key = remaining[0]
+  return key
+})
+
+// 当前按下的键（用于按键反馈）
+let pressedKey = $ref<string | null>(null)
+let pressedKeyTimer: any = null
+
+// 监听键盘按下事件，更新按键反馈
+function handleKeyPress(e: KeyboardEvent | any) {
+  // 清除之前的定时器
+  if (pressedKeyTimer) {
+    clearTimeout(pressedKeyTimer)
+  }
+  
+  // 获取按键的 code
+  let keyCode = e.code
+  
+  // 处理空格键
+  if (e.code === 'Space') {
+    keyCode = 'Space'
+  } else if (!e.code) {
+    // 如果没有 code，尝试从 key 推断
+    const key = e.key?.toLowerCase()
+    if (key === ' ') {
+      keyCode = 'Space'
+    } else if (key && key.length === 1) {
+      // 尝试映射字符到 code
+      if (/[a-z]/.test(key)) {
+        keyCode = `Key${key.toUpperCase()}`
+      } else if (/[0-9]/.test(key)) {
+        keyCode = `Digit${key}`
+      }
+    }
+  }
+  
+  // 只处理有效的按键
+  if (keyCode) {
+    pressedKey = keyCode
+    
+    // 200ms 后清除按下状态
+    pressedKeyTimer = setTimeout(() => {
+      pressedKey = null
+    }, 200)
+  }
+}
+
 // 在全局对象中存储当前单词信息，以便其他模块可以访问
 function updateCurrentWordInfo() {
   window.__CURRENT_WORD_INFO__ = {
@@ -91,11 +151,16 @@ onMounted(() => {
 
   emitter.on(EventKey.resetWord, reset)
   emitter.on(EventKey.onTyping, onTyping)
+  emitter.on(EventKey.keydown, handleKeyPress)
 })
 
 onUnmounted(() => {
   emitter.off(EventKey.resetWord)
   emitter.off(EventKey.onTyping, onTyping)
+  emitter.off(EventKey.keydown, handleKeyPress)
+  if (pressedKeyTimer) {
+    clearTimeout(pressedKeyTimer)
+  }
 })
 
 function repeat() {
@@ -151,7 +216,9 @@ function unknown(e) {
 }
 
 async function onTyping(e: KeyboardEvent) {
-  debugger
+  // 在处理输入的同时更新按键反馈
+  handleKeyPress(e)
+  
   let word = props.word.word
   if (inputLock) {
     // 因为输入完成会锁死不能再输入，所以在这里判断空格键切换到下一个单词
@@ -337,30 +404,52 @@ watch([() => input, () => showFullWord, () => settingStore.dictation], checkCurs
 //检测光标位置
 function checkCursorPosition() {
   _nextTick(() => {
+    // 检查必要元素是否存在
+    if (!typingWordRef) {
+      return
+    }
+    
     // 选中目标元素
     const cursorEl = document.querySelector(`.cursor`);
     const inputList = document.querySelectorAll(`.l`);
-    const typingWordRect = typingWordRef.getBoundingClientRect();
+    
+    if (!cursorEl) {
+      return
+    }
+    
+    try {
+      const typingWordRect = typingWordRef.getBoundingClientRect();
 
-    if (inputList.length) {
-      let inputRect = last(Array.from(inputList)).getBoundingClientRect();
-      cursor = {
-        top: inputRect.top + inputRect.height - cursorEl.clientHeight - typingWordRect.top,
-        left: inputRect.right - typingWordRect.left - 3,
-      };
-    } else {
-      const dictation = document.querySelector(`.dictation`);
-      let elRect
-      if (dictation) {
-        elRect = dictation.getBoundingClientRect();
+      if (inputList.length) {
+        const lastInput = last(Array.from(inputList));
+        if (lastInput) {
+          let inputRect = lastInput.getBoundingClientRect();
+          cursor = {
+            top: inputRect.top + inputRect.height - cursorEl.clientHeight - typingWordRect.top,
+            left: inputRect.right - typingWordRect.left - 3,
+          };
+        }
       } else {
-        const letter = document.querySelector(`.letter`);
-        elRect = letter.getBoundingClientRect();
+        const dictation = document.querySelector(`.dictation`);
+        let elRect
+        if (dictation) {
+          elRect = dictation.getBoundingClientRect();
+        } else {
+          const letter = document.querySelector(`.letter`);
+          if (letter) {
+            elRect = letter.getBoundingClientRect();
+          }
+        }
+        
+        if (elRect) {
+          cursor = {
+            top: elRect.top + elRect.height - cursorEl.clientHeight - typingWordRect.top,
+            left: elRect.left - typingWordRect.left - 3,
+          };
+        }
       }
-      cursor = {
-        top: elRect.top + elRect.height - cursorEl.clientHeight - typingWordRect.top,
-        left: elRect.left - typingWordRect.left - 3,
-      };
+    } catch (error) {
+      console.warn('Failed to check cursor position:', error)
     }
   },)
 }
@@ -443,6 +532,16 @@ useEvents([
           <span v-else v-html="hideWordInTranslation(v.cn, word.word)"></span>
         </div>
       </div>
+      
+      <!-- 虚拟键盘 - 放在单词和翻译下方 -->
+      <VirtualKeyboard
+        v-if="settingStore.showVirtualKeyboard"
+        :next-key="nextKey"
+        :pressed-key="pressedKey"
+        :show-finger-guide="true"
+        :visible="settingStore.showVirtualKeyboard"
+        class="virtual-keyboard-wrapper"
+      />
     </div>
     <div class="other anim"
          v-opacity="![WordPracticeType.Listen,WordPracticeType.Dictation,WordPracticeType.Identify].includes(settingStore.wordPracticeType) || showFullWord || showWordResult">
@@ -536,6 +635,7 @@ useEvents([
         </template>
       </div>
     </div>
+    
     <div class="cursor"
          :style="{top:cursor.top+'px',left:cursor.left+'px',height: settingStore.fontSize.wordForeignFontSize +'px'}"></div>
   </div>
@@ -614,6 +714,13 @@ useEvents([
   .pos {
     font-family: var(--en-article-family);
     @apply text-lg w-12;
+  }
+
+  .virtual-keyboard-wrapper {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    max-height: calc(100vh - 450px); // 限制最大高度，防止滚动条，适配不同屏幕
+    overflow: hidden; // 防止内容溢出
   }
 
 }

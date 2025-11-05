@@ -500,6 +500,12 @@ function importOldData() {
             <Switch v-model="settingStore.showNearWord"/>
           </SettingItem>
 
+          <SettingItem title="显示虚拟键盘"
+                       desc="开启后，在打字练习中显示虚拟键盘，高亮当前需要按下的键并显示手指指示"
+          >
+            <Switch v-model="settingStore.showVirtualKeyboard"/>
+          </SettingItem>
+
           <SettingItem title="不默认显示练习设置弹框"
                        desc="在词典详情页面，点击学习按钮后，是否显示练习设置弹框"
           >
